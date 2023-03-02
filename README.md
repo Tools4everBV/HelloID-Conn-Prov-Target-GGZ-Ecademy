@@ -59,6 +59,7 @@ The following settings are required to connect to the API.
 
 
 ### Remarks
+- Due to some uncertainties regarding the design of the connector, some assumptions were made, upon which the account object is based. This means that the current code may not work directly in every environment. The actual design will have to be determined during the first implementation.
 - Presently, ExternalEngagements are linked to a primary contract, allowing each account to have only one ExternalEngagement. However, the API has the capability to support multiple ExternalEngagements if required. If necessary, the existing code can be modified accordingly.
 - The current ExternalEngagements for a GGZ-Ecademy user account remain unaltered, with updates being solely applied to the ExternalEngagements that are matched with the ExternalEngagements in the account object.
 - The same applies for the traits within the ExternalEngagements. The connector only updates existing or adding new Traits, while the remaining traits shall be retained without any modification.
