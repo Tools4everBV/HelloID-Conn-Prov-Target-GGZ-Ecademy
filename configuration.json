@@ -1,0 +1,53 @@
+[
+    {
+        "key": "ClientId",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "ClientId",
+            "description": "The ClientId to connect to the GGZ-Ecademy API",
+            "required": true
+        }
+    },
+    {
+        "key": "ClientSecret",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "type": "password",
+            "label": "ClientSecret",
+            "description": "The ClientSecret to connect to the GGZ-Ecademy API",
+            "required": true
+        }
+    },
+    {
+        "key": "BaseUrl",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "BaseUrl",
+            "description": "The URL to the GGZ-Ecademy API.",
+            "required": true
+        }
+    },
+    {
+        "key": "org",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "Organization [org]",
+            "description": "The organization (id) to connect to the GGZ-Ecademy API",
+            "required": true
+        }
+    },
+    {
+        "key": "IsDebug",
+        "type": "checkbox",
+        "defaultValue": true,
+        "templateOptions": {
+            "label": "Toggle debug logging",
+            "description": "When toggled, debug logging will be displayed",
+            "required": false
+        }
+    }
+]
