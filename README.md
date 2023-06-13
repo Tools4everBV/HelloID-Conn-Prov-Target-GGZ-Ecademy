@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://ggzecademy.nl/web/themes/ggzecademy/img/logo-new.svg"
   width="500">
-</p>
+</p> 
 
 ## Table of contents
 
