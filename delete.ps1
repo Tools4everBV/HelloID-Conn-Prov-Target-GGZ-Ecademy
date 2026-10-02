@@ -1,31 +1,17 @@
-#####################################################
+##################################################
 # HelloID-Conn-Prov-Target-GGZ-Ecademy-Delete
-#
-# Version: 1.0.0
-#####################################################
-# Initialize default values
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$aRef = $AccountReference | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+# PowerShell V2
+##################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($($config.IsDebug)) {
-    $true { $VerbosePreference = 'Continue' }
-    $false { $VerbosePreference = 'SilentlyContinue' }
-}
 
 #region functions
 function Get-GGZEcademyToken {
     [CmdletBinding()]
     param()
     try {
-        Write-Verbose 'Creating authentication header'
-        $base64String = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($($config.ClientId) + ':' + $($config.ClientSecret)))
+        $base64String = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($($actionContext.Configuration.ClientId) + ':' + $($actionContext.Configuration.ClientSecret)))
         $headers = @{
             Accept         = 'application/json'
             'Content-Type' = 'application/x-www-form-urlencoded'
@@ -33,17 +19,17 @@ function Get-GGZEcademyToken {
         }
 
         $splatRestParams = @{
-            Uri     = "$($config.BaseUrl)/token"
+            Uri     = "$($actionContext.Configuration.BaseUrl)/token"
             Method  = 'POST'
             Body    = 'grant_type=client_credentials'
             Headers = $headers
         }
         Invoke-RestMethod @splatRestParams -Verbose:$false
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
-
 function Resolve-GGZ-EcademyError {
     [CmdletBinding()]
     param (
@@ -60,7 +46,8 @@ function Resolve-GGZ-EcademyError {
         }
         if ($ErrorObject.ErrorDetails) {
             $errorExceptionDetails = $ErrorObject.ErrorDetails
-        } elseif ($ErrorObject.Exception.Response) {
+        }
+        elseif ($ErrorObject.Exception.Response) {
             $result = $ErrorObject.Exception.Response.GetResponseStream()
             $reader = [System.IO.StreamReader]::new($result)
             $errorExceptionDetails = $reader.ReadToEnd()
@@ -77,7 +64,8 @@ function Resolve-GGZ-EcademyError {
                         if ( $_.'hydra:description' -eq 'Call to a member function getRoleNames() on null') {
                             $httpErrorObj.FriendlyMessage = "Possibly incorrect authorization credentials: $($_.'hydra:description')"
                             $httpErrorObj.ErrorDetails = "Possibly incorrect authorization credentials: $($_.'hydra:description')"
-                        } else {
+                        }
+                        else {
                             $httpErrorObj.FriendlyMessage = $_.'hydra:description'
                             $httpErrorObj.ErrorDetails = $_.'hydra:description'
                         }
@@ -89,7 +77,8 @@ function Resolve-GGZ-EcademyError {
                         break
                     }
                 }
-            } catch {
+            }
+            catch {
                 $httpErrorObj.FriendlyMessage = $convertedErrorDetails
                 $httpErrorObj.ErrorDetails = $convertedErrorDetails
             }
@@ -98,97 +87,96 @@ function Resolve-GGZ-EcademyError {
     }
 }
 #endregion
-#endregion
 
-# Begin
 try {
-    Write-Verbose "Verifying if a GGZ-Ecademy account for [$($p.DisplayName)] exists"
-    $accessToken = (Get-GGZEcademyToken )
+    # Verify if [accountReference] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw 'The account reference could not be found'
+    }
+
+    $accessToken = Get-GGZEcademyToken
     $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
     $headers.Add('Accept', 'application/ld+json')
     $headers.Add('Content-Type', 'application/ld+json')
     $headers.Add('Authorization', "$($accessToken.token_type) $($accessToken.access_token)")
 
-
+    Write-Information 'Verifying if a GGZ-Ecademy account exists'
     try {
-        if ($null -eq $aRef.ExternalId) {
-            throw 'No account reference is available'
-        }
         $splatRestParams = @{
-            Uri     = "$($config.BaseUrl)/api/external_identities/$($aRef.ExternalId)"
+            Uri     = "$($actionContext.Configuration.BaseUrl)/api/external_identities/$($actionContext.References.Account)"
             Method  = 'GET'
             Headers = $headers
         }
-        $null = Invoke-RestMethod @splatRestParams -Verbose:$false
-        $action = 'Found'
-        $dryRunMessage =  "GGZ-Ecademy account for: [$($p.DisplayName)] will be deleted during enforcement"
-    } catch {
-        $errorMessage = Resolve-GGZ-EcademyError -ErrorObject $_
-        if ($errorMessage.FriendlyMessage -eq 'Not Found') {
-            $action = 'NotFound'
-            $dryRunMessage = "GGZ-Ecademy account for: [$($p.DisplayName)] not found. Possibly already deleted. Skipping action"
-        } else {
+        $correlatedAccount = Invoke-RestMethod @splatRestParams
+    }
+    catch {
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            $correlatedAccount = $null
+        }
+        else {
             throw $_
         }
     }
 
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true) {
-        Write-Warning "[DryRun] $dryRunMessage"
+    if ($null -ne $correlatedAccount) {
+        $lifecycleProcess = 'DeleteAccount'
+    }
+    else {
+        $lifecycleProcess = 'NotFound'
     }
 
     # Process
-    if (-not($dryRun -eq $true)) {
-        Write-Verbose "Deleting GGZ-Ecademy account with accountReference: [$($aRef.ExternalId)]"
-
-        switch ($action) {
-            'Found' {
-                $splatRestParams = @{
-                    Uri     = "$($config.BaseUrl)/api/external_identities/$($aRef.ExternalId)"
-                    Method  = 'DELETE'
-                    Headers = $headers
-                }
-                $null = Invoke-RestMethod @splatRestParams -Verbose:$false
-
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = 'Delete account was successful'
-                        IsError = $false
-                    })
-                break
+    switch ($lifecycleProcess) {
+        'DeleteAccount' {
+            $splatRestParams = @{
+                Uri     = "$($actionContext.Configuration.BaseUrl)/api/external_identities/$($actionContext.References.Account)"
+                Method  = 'DELETE'
+                Headers = $headers
             }
 
-            'NotFound' {
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = "GGZ-Ecademy account for: [$($p.DisplayName)] not found. Possibly already deleted. Skipping action"
-                        IsError = $false
-                    })
-                break
+
+            if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information "Deleting GGZ-Ecademy account with accountReference: [$($actionContext.References.Account)]"
+                $null = Invoke-RestMethod @splatRestParams
             }
+            else {
+                Write-Information "[DryRun] Delete GGZ-Ecademy account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
+            }
+
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Delete account: [$($actionContext.References.Account)] was successful. Action initiated by: [$($actionContext.Origin)]"
+                    IsError = $false
+                })
+            break
         }
 
-        $success = $true
+        'NotFound' {
+            Write-Information "GGZ-Ecademy account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "GGZ-Ecademy account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted. Action initiated by: [$($actionContext.Origin)]"
+                    IsError = $false
+                })
+            break
+        }
     }
-} catch {
-    $success = $false
+}
+catch {
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-GGZ-EcademyError -ErrorObject $ex
-        $auditMessage = "Could not delete GGZ-Ecademy account. Error: $($errorObj.FriendlyMessage)"
-        Write-Verbose "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
-        $auditMessage = "Could not delete GGZ-Ecademy account. Error: $($ex.Exception.Message)"
-        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Could not delete GGZ-Ecademy account: [$($actionContext.References.Account)]. Error: $($errorObj.FriendlyMessage). Action initiated by: [$($actionContext.Origin)]"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
-    $auditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
+    else {
+        $auditLogMessage = "Could not delete GGZ-Ecademy account: [$($actionContext.References.Account)]. Error: $($_.Exception.Message). Action initiated by: [$($actionContext.Origin)]"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditLogMessage
             IsError = $true
         })
-    # End
-} finally {
-    $result = [PSCustomObject]@{
-        Success   = $success
-        Auditlogs = $auditLogs
-    }
-    Write-Output $result | ConvertTo-Json -Depth 10
 }
