@@ -1,0 +1,278 @@
+{
+  "Version": "v1",
+  "MappingFields": [
+    {
+      "Name": "externalId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "surname",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Name.FamilyName\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "surnamePrefix",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Name.FamilyNamePartnerPrefix\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "givenName",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Name.GivenName\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "ltiId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "initials",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Name.Initials\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "dateOfBirth",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Details.BirthDate\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEmail",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getEmail() {\\r\\n    let mail = '';\\r\\n    if (typeof Person.Accounts.MicrosoftActiveDirectory.mail !== 'undefined' && Person.Accounts.MicrosoftActiveDirectory.mail) {\\r\\n        mail = Person.Accounts.MicrosoftActiveDirectory.mail;\\r\\n    }\\r\\n    return mail;\\r\\n}\\r\\ngetEmail()\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementTraitManager",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Manager.DisplayName\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementTraitKostenplaatscode",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.CostCenter.Code\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementTraitFunctie",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Title.Name\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementTraitKostenplaatsomschrijving",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.CostCenter.Name\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementStartDate",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.StartDate\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementEndDate",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.EndDate\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "externalEngagementExternalId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "org",
+      "Description": "The OrganizationId to connect to the GGZ-Ecademy API",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"testorg\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    }
+  ],
+  "UniqueFieldNames": []
+}

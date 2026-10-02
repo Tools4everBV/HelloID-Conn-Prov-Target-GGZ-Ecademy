@@ -1,94 +1,17 @@
-#####################################################
+#################################################
 # HelloID-Conn-Prov-Target-GGZ-Ecademy-Update
-#
-# Version: 1.0.0
-#####################################################
-# Initialize default values
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$m = $manager | ConvertFrom-Json
-$aRef = $AccountReference | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+# PowerShell V2
+#################################################
 
-#region HelpFunction
-function Format-GGZDateObject {
-    [CmdletBinding()]
-    param(
-        [Parameter(Position = 1, ValueFromPipeline)]
-        $datetime
-    )
-    process {
-        try {
-            if (-not [string]::IsNullOrEmpty( $datetime)) {
-                $output = $datetime.Substring(0, 10)
-            } else {
-                $output = $null
-            }
-            Write-Output $output
-        } catch {
-            $PSCmdlet.ThrowTerminatingError($_)
-        }
-    }
-}
-#endregion HelpFunction
-
-# Account mapping
-$account = [PSCustomObject]@{
-    externalId          = "$($aRef.ExternalId)"
-    surname             = $p.Name.FamilyName
-    surnamePrefix       = $p.Name.FamilyNamePartnerPrefix
-    givenName           = $p.Name.GivenName
-    ltiId               = ''
-    initials            = $p.Name.Initials
-    externalEmail       = $p.Contact.Business.Email
-    dateOfBirth         = $p.Details.BirthDate | Format-GGZDateObject
-    # user                = @{
-    #     username = $p.UserName
-    # } # It is not possible to update this field.
-    externalEngagements = @(
-        @{
-            dateStart  = $p.PrimaryContract.StartDate | Format-GGZDateObject
-            dateEnd    = $p.PrimaryContract.enddate | Format-GGZDateObject
-            externalId = $p.PrimaryContract.ExternalId
-            traits     = @(
-                @{
-                    traitKey   = 'Manager'
-                    traitValue = "$($m.DisplayName)" # Null is not allowed, use empty string instead.
-                },
-                @{
-                    traitKey   = 'Kostenplaatscode'
-                    traitValue = "$($p.PrimaryContract.CostCenter.Code)"
-                },
-                @{
-                    traitKey   = 'Kostenplaatsomschrijving'
-                    traitValue = "$($p.PrimaryContract.CostCenter.Name)"
-                },
-                @{
-                    traitKey   = 'Functie'
-                    traitValue = "$($p.PrimaryContract.Title.Name)"
-                }
-            )
-        }
-    )
-    org                 = "$($config.org)"
-}
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($($config.IsDebug)) {
-    $true { $VerbosePreference = 'Continue' }
-    $false { $VerbosePreference = 'SilentlyContinue' }
-}
 
 #region functions
 function Get-GGZEcademyToken {
     [CmdletBinding()]
     param()
     try {
-        Write-Verbose 'Creating authentication header'
-        $base64String = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($($config.ClientId) + ':' + $($config.ClientSecret)))
+        $base64String = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($($actionContext.Configuration.ClientId) + ':' + $($actionContext.Configuration.ClientSecret)))
         $headers = @{
             Accept         = 'application/json'
             'Content-Type' = 'application/x-www-form-urlencoded'
@@ -96,13 +19,14 @@ function Get-GGZEcademyToken {
         }
 
         $splatRestParams = @{
-            Uri     = "$($config.BaseUrl)/token"
+            Uri     = "$($actionContext.Configuration.BaseUrl)/token"
             Method  = 'POST'
             Body    = 'grant_type=client_credentials'
             Headers = $headers
         }
         Invoke-RestMethod @splatRestParams -Verbose:$false
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -123,7 +47,8 @@ function Resolve-GGZ-EcademyError {
         }
         if ($ErrorObject.ErrorDetails) {
             $errorExceptionDetails = $ErrorObject.ErrorDetails
-        } elseif ($ErrorObject.Exception.Response) {
+        }
+        elseif ($ErrorObject.Exception.Response) {
             $result = $ErrorObject.Exception.Response.GetResponseStream()
             $reader = [System.IO.StreamReader]::new($result)
             $errorExceptionDetails = $reader.ReadToEnd()
@@ -140,7 +65,8 @@ function Resolve-GGZ-EcademyError {
                         if ( $_.'hydra:description' -eq 'Call to a member function getRoleNames() on null') {
                             $httpErrorObj.FriendlyMessage = "Possibly incorrect authorization credentials: $($_.'hydra:description')"
                             $httpErrorObj.ErrorDetails = "Possibly incorrect authorization credentials: $($_.'hydra:description')"
-                        } else {
+                        }
+                        else {
                             $httpErrorObj.FriendlyMessage = $_.'hydra:description'
                             $httpErrorObj.ErrorDetails = $_.'hydra:description'
                         }
@@ -152,7 +78,8 @@ function Resolve-GGZ-EcademyError {
                         break
                     }
                 }
-            } catch {
+            }
+            catch {
                 $httpErrorObj.FriendlyMessage = $convertedErrorDetails
                 $httpErrorObj.ErrorDetails = $convertedErrorDetails
             }
@@ -160,233 +87,330 @@ function Resolve-GGZ-EcademyError {
         Write-Output $httpErrorObj
     }
 }
+function Get-TraitValue {
+    param($Value)
 
-function Compare-AccountProperties {
-    param(
-        $Account,
-        $CurrentAccount
-    )
-    # Format dattime before compare so it matches the Time in the current account object
-    $currentAccount.dateOfBirth = $currentAccount.dateOfBirth | Format-GGZDateObject
-
-    $splatCompareProperties = @{
-        ReferenceObject  = @($currentAccount.PSObject.Properties | Where-Object { $_.name -notin 'externalEngagements' })
-        DifferenceObject = @($account.PSObject.Properties | Where-Object { $_.name -notin 'externalEngagements' })
+    if ($null -eq $Value) {
+        return ''
     }
-    Write-Output (Compare-Object @splatCompareProperties -PassThru).Where({ $_.SideIndicator -eq '=>' })
+
+    return $Value
 }
 
-function Compare-EngagementProperties {
+function ConvertTo-GGZAccountObject {
+    [CmdletBinding()]
     param(
-        $CurrentEngagement,
-        $Engagement
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject]
+        $Data
     )
-    # Ensure that the DateTime object is properly formatted before comparison
-    $CurrentEngagement.dateStart = $CurrentEngagement.dateStart | Format-GGZDateObject
-    $CurrentEngagement.dateEnd = $CurrentEngagement.dateEnd | Format-GGZDateObject
 
-    $splatCompareProperties = @{
-        ReferenceObject  = @(([PSCustomObject]$CurrentEngagement).PSObject.Properties | Where-Object { $_.name -notin 'traits' })
-        DifferenceObject = @(([PSCustomObject]$Engagement).PSObject.Properties | Where-Object { $_.name -notin 'traits' })
+    return [PSCustomObject]@{
+        externalId          = $Data.externalId
+        surname             = $Data.surname
+        surnamePrefix       = $Data.surnamePrefix
+        givenName           = $Data.givenName
+        ltiId               = $Data.ltiId
+        initials            = $Data.initials
+        externalEmail       = $Data.externalEmail
+        dateOfBirth         = $Data.dateOfBirth
+
+        externalEngagements = @(
+            [PSCustomObject]@{
+                dateStart  = $Data.externalEngagementStartDate
+                dateEnd    = $Data.externalEngagementEndDate
+                externalId = $Data.externalEngagementExternalId
+
+                traits     = @(
+                    [PSCustomObject]@{
+                        traitKey   = 'Manager'
+                        traitValue = Get-TraitValue $Data.externalEngagementTraitManager
+                    }
+                    [PSCustomObject]@{
+                        traitKey   = 'Kostenplaatscode'
+                        traitValue = Get-TraitValue $Data.externalEngagementTraitKostenplaatscode
+                    }
+                    [PSCustomObject]@{
+                        traitKey   = 'Kostenplaatsomschrijving'
+                        traitValue = Get-TraitValue $Data.externalEngagementTraitKostenplaatsomschrijving
+                    }
+                    [PSCustomObject]@{
+                        traitKey   = 'Functie'
+                        traitValue = Get-TraitValue $Data.externalEngagementTraitFunctie
+                    }
+                )
+            }
+        )
+
+        org                 = $actionContext.Data.org
     }
-    Write-Output  (Compare-Object @splatCompareProperties -PassThru ).Where({ $_.SideIndicator -eq '=>' })
+}
+
+function ConvertTo-SortedObject {
+    param(
+        [Parameter(ValueFromPipeline)]
+        $InputObject
+    )
+
+    process {
+        if ($null -eq $InputObject) {
+            return $null
+        }
+
+        if ($InputObject -is [System.Collections.IDictionary]) {
+            $result = [ordered]@{}
+
+            foreach ($key in ($InputObject.Keys | Sort-Object)) {
+                $result[$key] = ConvertTo-SortedObject $InputObject[$key]
+            }
+
+            [PSCustomObject]$result
+        }
+
+        if ($InputObject -is [System.Collections.IEnumerable] -and
+            $InputObject -isnot [string]) {
+            return @(
+                foreach ($item in $InputObject) {
+                    ConvertTo-SortedObject $item
+                }
+            )
+        }
+
+        if ($InputObject.PSObject.Properties.Count -gt 0 -and
+            $InputObject -isnot [ValueType] -and
+            $InputObject -isnot [string]) {
+
+            $result = [ordered]@{}
+
+            foreach ($property in ($InputObject.PSObject.Properties | Sort-Object Name)) {
+                $result[$property.Name] = ConvertTo-SortedObject $property.Value
+            }
+
+            [PSCustomObject]$result
+        }
+
+        return $InputObject
+    }
+}
+
+function ConvertTo-HelloIDAccountObject {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject]
+        $Data
+    )
+
+    $engagement = $Data.externalEngagements | Select-Object -First 1
+
+    return [PSCustomObject]@{
+        externalId                                      = $Data.externalId
+        surname                                         = $Data.surname
+        surnamePrefix                                   = $Data.surnamePrefix
+        givenName                                       = $Data.givenName
+        ltiId                                           = $Data.ltiId
+        initials                                        = $Data.initials
+        dateOfBirth                                     = $Data.dateOfBirth
+        externalEmail                                   = $Data.externalEmail
+
+        externalEngagementTraitManager                  = Get-TraitValue $engagement.traits | Where-Object traitKey -eq 'Manager' | Select-Object -ExpandProperty traitValue
+        externalEngagementTraitKostenplaatscode         = Get-TraitValue $engagement.traits | Where-Object traitKey -eq 'Kostenplaatscode' | Select-Object -ExpandProperty traitValue
+        externalEngagementTraitFunctie                  = Get-TraitValue $engagement.traits | Where-Object traitKey -eq 'Functie' | Select-Object -ExpandProperty traitValue
+        externalEngagementTraitKostenplaatsomschrijving = Get-TraitValue $engagement.traits | Where-Object traitKey -eq 'Kostenplaatsomschrijving' | Select-Object -ExpandProperty traitValue
+
+        externalEngagementStartDate                     = $engagement.dateStart
+        externalEngagementEndDate                       = $engagement.dateEnd
+        externalEngagementExternalId                    = $engagement.externalId
+
+        org                                             = $Data.org
+    }
 }
 #endregion
 
-# Begin
 try {
-    Write-Verbose "Verifying if a GGZ-Ecademy account for [$($p.DisplayName)] exists"
-    $accessToken = (Get-GGZEcademyToken )
+    # Verify if [accountReference] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw 'The account reference could not be found'
+    }
 
+    $accessToken = Get-GGZEcademyToken
     $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
     $headers.Add('Accept', 'application/ld+json')
     $headers.Add('Content-Type', 'application/ld+json')
     $headers.Add('Authorization', "$($accessToken.token_type) $($accessToken.access_token)")
 
-    if ($null -eq $aRef.ExternalId) {
-        throw 'No account reference is available'
-    }
-
-    $splatRestParams = @{
-        Uri     = "$($config.BaseUrl)/api/external_identities/$($aRef.ExternalId)"
-        Method  = 'GET'
-        Headers = $headers
-    }
+    Write-Information 'Verifying if a GGZ-Ecademy account exists'
     try {
-        $currentAccount = Invoke-RestMethod @splatRestParams -Verbose:$false
-    } catch {
-        $errorMessage = Resolve-GGZ-EcademyError -ErrorObject $_
-        if ($errorMessage.FriendlyMessage -eq 'Not Found') {
-            $currentAccount = $null
-        } else {
+        $splatRestParams = @{
+            Uri     = "$($actionContext.Configuration.BaseUrl)/api/external_identities/$($actionContext.References.Account)"
+            Method  = 'GET'
+            Headers = $headers
+        }
+        $correlatedAccount = Invoke-RestMethod @splatRestParams
+        $outputContext.PreviousData = $correlatedAccount | ConvertTo-HelloIDAccountObject
+    }
+    catch {
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            $correlatedAccount = $null
+        }
+        else {
             throw $_
         }
     }
 
+    if ($null -ne $correlatedAccount) {
+        $targetAccount = $actionContext.Data | ConvertTo-GGZAccountObject
 
-    # Verify if the account must be updated
-    if ($null -eq $currentAccount) {
-        $action = 'NotFound'
-        $dryRunMessage = "GGZ-Ecademy account for: [$($p.DisplayName)] not found. Possibly already deleted. Skipping action"
-    } else {
-        # Initialize variables
-        $action = 'NoChanges'
-        $dryRunMessage = 'No changes will be made to the account during enforcement'
-
-        # Compare between the current properties of an GGZ account and the properties desired in the AccountObject.
-        $propertiesChanged = Compare-AccountProperties -Account $account -CurrentAccount $CurrentAccount
-
-        # Modify the current account object by updating the altered properties of the account.
-        if ($propertiesChanged.count -gt 0) {
-            $action = 'Update'
-            $dryRunMessage = "Account property(s) required to update: [$($propertiesChanged.name -join ', ')]"
-            foreach ($prop in $propertiesChanged) {
-                $currentAccount.$($prop.Name) = $account.$($prop.Name)
-            }
+        # Compare regular account properties
+        $splatCompareProperties = @{
+            ReferenceObject  = @($correlatedAccount.PSObject.Properties)
+            DifferenceObject = @($targetAccount.PSObject.Properties)
         }
 
-        # Verify if any managed engagements stored in the account reference have been updated with new engagements.
-        # This situation could arise if the primary contract has changed.
-        $previousManagedEngagementIds = $aRef.externalEngagementIds | Where-Object { [string[]]$_ -notin [string[]]$account.externalEngagements.externalid }
-        if ($null -ne $previousManagedEngagementIds) {
-            $updateAccountReference = $true
-            $aRef.externalEngagementIds = $account.externalEngagements.ExternalId
+        $propertiesChanged = Compare-Object @splatCompareProperties -PassThru |
+        Where-Object { $_.SideIndicator -eq '=>' }
 
-            # If a managed engagement has been modified and is no longer in scope, it will be disabled by specifying an end date.
-            foreach ($engagementId in $previousManagedEngagementIds) {
-                Write-Verbose "Previous externalEngagement [$engagementId] out of scope, will end the engagement"
-                $currentAccount.externalEngagements | Where-Object { $_.externalId -eq $engagementId } | ForEach-Object { $_.dateEnd = (Get-Date -f 'yyyy-MM-dd') }
-            }
-        }
+        # Compare externalEngagements and nested traits
+        $engagementPropertiesChanged = [System.Collections.Generic.List[string]]::new()
 
-        # Compare the externalEngagements within the account object with the current engagements stored in the GGZ account.
-        # Update the current account object with the required changes
-        foreach ($engagement in $account.externalEngagements) {
-            $currentEngagement = $currentAccount.externalEngagements | Where-Object { $_.externalId -eq $engagement.externalId }
-            if ($currentEngagement.Count -gt 1) {
-                throw "Multiple external engagements were found with the same externalID [$($engagement.externalId)]. Processing the engagement is not possible at this time."
+        foreach ($targetEngagement in @($targetAccount.externalEngagements)) {
+            $referenceEngagement = @(
+                $correlatedAccount.externalEngagements |
+                Where-Object { $_.externalId -eq $targetEngagement.externalId }
+            )[0]
+
+            if ($null -eq $referenceEngagement) {
+                $engagementPropertiesChanged.Add(
+                    "externalEngagements[$($targetEngagement.externalId)]"
+                )
+                continue
             }
 
-            if ($null -eq $currentEngagement ) {
-                Write-Verbose "New externalEngagements with external ID  [$($engagement.externalId)]"
-                $currentAccount.externalEngagements += $engagement
-                $action = 'Update'
+            # Engagement properties
+            foreach ($property in @('dateStart', 'dateEnd', 'externalId')) {
+                if ($referenceEngagement.$property -ne $targetEngagement.$property) {
+                    $engagementPropertiesChanged.Add(
+                        "externalEngagements[$($targetEngagement.externalId)].$property"
+                    )
+                }
+            }
 
-            } else {
-                Write-Verbose "Existing ExternalEngagements found with externalID  [$($engagement.externalId)]"
+            # Engagement traits
+            foreach ($targetTrait in @($targetEngagement.traits)) {
+                $referenceTrait = @(
+                    $referenceEngagement.traits |
+                    Where-Object { $_.traitKey -eq $targetTrait.traitKey }
+                )[0]
 
-                # Compare the current properties of the engegement against desired engegement(s) in account object
-                $propertiesEngagementChanged = Compare-EngagementProperties -CurrentEngagement $currentEngagement -Engagement $Engagement
-
-                # Update Changed Engagement Properties
-                if ( $propertiesEngagementChanged.count -gt 0 ) {
-                    Write-Verbose "ExternalEngagement [$($engagement.externalId)] need a update [$($propertiesEngagementChanged.name -join ', ')]"
-                    foreach ($prop  in $propertiesEngagementChanged ) {
-                        $currentEngagement."$($prop.Name)" = $account.externalEngagements."$($prop.Name)"
-                    }
-                    $action = 'Update'
+                if ($null -eq $referenceTrait) {
+                    $engagementPropertiesChanged.Add(
+                        "externalEngagements[$($targetEngagement.externalId)].traits[$($targetTrait.traitKey)]"
+                    )
+                    continue
                 }
 
-                # Compare between the traits in the current engagement and the traits listed in the account object,
-                # and then update the engagement traits accordingly.
-                foreach ($trait in  $engagement.traits) {
-                    $currentTrait = $currentEngagement.traits | Where-Object traitKey -EQ $trait.traitKey
-
-                    if ($currentTrait -and $trait.traitValue -ne $currentTrait.traitValue) {
-                        Write-Verbose  "Trait [$($trait.traitKey)] requires an Update [$($currentTrait.traitValue)] => [$($trait.traitValue)]"
-                        $currentTrait.traitValue = $trait.traitValue
-                        $action = 'Update'
-
-                    } elseif (-not $currentTrait) {
-                        Write-Verbose  "New trait found [Key: $($trait.traitKey)] [Value: $($trait.traitValue)]"
-                        $currentEngagement.traits += [PSCustomObject]$trait
-                        $action = 'Update'
-                    }
+                if ($referenceTrait.traitValue -ne $targetTrait.traitValue) {
+                    $engagementPropertiesChanged.Add(
+                        "externalEngagements[$($targetEngagement.externalId)].traits[$($targetTrait.traitKey)].traitValue"
+                    )
                 }
             }
         }
-    }
 
-    if ($action -eq 'NoChanges') {
-        Write-Verbose "$dryRunMessage"
-    }
+        $engagementsChanged = $engagementPropertiesChanged.Count -gt 0
 
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true) {
-        Write-Warning "[DryRun] $dryRunMessage"
+        if ($propertiesChanged -or $engagementsChanged) {
+
+            if ($propertiesChanged) {
+                Write-Information "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
+            }
+
+            if ($engagementPropertiesChanged.Count -gt 0) {
+                Write-Information "External engagement property(s) required to update: $($engagementPropertiesChanged -join ', ')"
+            }
+
+            $lifecycleProcess = 'UpdateAccount'
+        }
+        else {
+            $lifecycleProcess = 'NoChanges'
+        }
+    }
+    else {
+        $lifecycleProcess = 'NotFound'
     }
 
     # Process
-    if (-not($dryRun -eq $true)) {
-        switch ($action) {
-            'Update' {
-                Write-Verbose "Updating GGZ-Ecademy account with accountReference: [$($aRef.ExternalId)]"
+    switch ($lifecycleProcess) {
+        'UpdateAccount' {
+            $splatRestParams = @{
+                Uri     = "$($actionContext.Configuration.BaseUrl)/api/external_identities/$($actionContext.References.Account)"
+                Method  = 'PUT'
+                Headers = $headers
+            }
+            if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information "Updating GGZ-Ecademy account with accountReference: [$($actionContext.References.Account)]"
+                $ggzAccount = $actionContext.Data | ConvertTo-GGZAccountObject
+                $splatRestParams.Body = $ggzAccount | ConvertTo-Json -Depth 10
+                $null = Invoke-RestMethod @splatRestParams
 
-                $splatRestParams = @{
-                    Uri     = "$($config.BaseUrl)/api/external_identities/$($aRef.ExternalId)"
-                    Method  = 'PUT'
-                    Body    = $currentAccount | ConvertTo-Json -Depth 10
-                    Headers = $headers
-                }
-                $null = Invoke-RestMethod @splatRestParams -Verbose:$false
-
-                $success = $true
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = "Update account was successful. AccountReference: [$($aRef.ExternalId)]"
-                        IsError = $false
-                    })
-                break
+            }
+            else {
+                Write-Information "[DryRun] Update GGZ-Ecademy account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
             }
 
-            'NoChanges' {
-                Write-Verbose "No changes to GGZ-Ecademy account with accountReference: [$($aRef.ExternalId)]"
-                $success = $true
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = "Update account was successful. AccountReference: [$($aRef.ExternalId)] No Changes"
-                        IsError = $false
-                    })
-                break
+            $changed = @()
+            if ($propertiesChanged) {
+                $changed += "Account property(s): [$($propertiesChanged.Name -join ', ')]"
             }
 
-            'NotFound' {
-                $success = $false
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = "GGZ-Ecademy account for: [$($p.DisplayName)] not found. Possibly deleted"
-                        IsError = $true
-                    })
-                break
+            if ($engagementPropertiesChanged) {
+                $changed += "Engagement property(s): [$($engagementPropertiesChanged -join ', ')]"
             }
+
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "Update account was successful. $($changed -join ' and ')"
+                IsError = $false
+            })
+            break
+        }
+
+        'NoChanges' {
+            Write-Information "No changes to GGZ-Ecademy account with accountReference: [$($actionContext.References.Account)]"
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Skipped updating GGZ-Ecademy account with AccountReference: [$($actionContext.References.Account)]. Reason: No changes."
+                    IsError = $false
+                })
+            break
+        }
+
+        'NotFound' {
+            Write-Information "GGZ-Ecademy account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
+            $outputContext.Success = $false
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "GGZ-Ecademy account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
+                    IsError = $true
+                })
+            break
         }
     }
-} catch {
-    $success = $false
+}
+catch {
+    $outputContext.Success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-GGZ-EcademyError -ErrorObject $ex
-        $auditMessage = "Could not update GGZ-Ecademy account. Error: $($errorObj.FriendlyMessage)"
-        Write-Verbose "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
-        $auditMessage = "Could not update GGZ-Ecademy account. Error: $($ex.Exception.Message)"
-        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Could not update GGZ-Ecademy account: [$($actionContext.References.Account)]. Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
-    $auditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
+    else {
+        $auditLogMessage = "Could not update GGZ-Ecademy account: [$($actionContext.References.Account)]. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditLogMessage
             IsError = $true
         })
-    # End
-} finally {
-    $result = [PSCustomObject]@{
-        Success   = $success
-        Account   = $account
-        Auditlogs = $auditLogs
-    }
-
-    if ($updateAccountReference) {
-        $result | Add-Member -NotePropertyMembers @{
-            AccountReference = $aRef
-        }
-    }
-
-    Write-Output $result | ConvertTo-Json -Depth 10
 }
